@@ -10,7 +10,7 @@ import io
 TARGET_IDEAL = 10 
 BATAS_MAKSIMAL = 15
 
-# --- FUNGSI LOGIKA (Sama persis dengan sebelumnya) ---
+# --- FUNGSI LOGIKA ---
 def bagi_secara_adil(teks, batas_maksimal):
     kata_kata = teks.split()
     total_kata = len(kata_kata)
@@ -49,6 +49,7 @@ def proses_kalimat_final(teks_lengkap):
 
         potensi_total = current_word_count + phrase_word_count
         masuk = False
+        
         if potensi_total <= TARGET_IDEAL:
             masuk = True
         elif potensi_total <= BATAS_MAKSIMAL:
@@ -72,7 +73,7 @@ def proses_kalimat_final(teks_lengkap):
         final_slides.append(" / ".join(current_slide_phrases))
     return final_slides
 
-# --- FUNGSI PEMBUAT PPT (Dimodifikasi untuk Web) ---
+# --- FUNGSI PEMBUAT PPT ---
 def generate_pptx_binary(naskah_text):
     prs = Presentation()
     prs.slide_width = Inches(10)
@@ -81,7 +82,6 @@ def generate_pptx_binary(naskah_text):
     tanda_sumber = chr(91) + "source:" 
     tanda_tutup = chr(93)
 
-    # Memecah teks input dari text area menjadi baris-baris
     lines = naskah_text.split('\n')
 
     for line in lines:
@@ -93,6 +93,14 @@ def generate_pptx_binary(naskah_text):
             text_clean = text_raw
         
         if not text_clean: continue
+
+        # --- AUTO PUNCTUATION SEDERHANA ---
+        # 1. Ganti Titik (.) jadi // 
+        text_clean = text_clean.replace(".", " //")
+        
+        # 2. Ganti Koma (,) jadi /
+        text_clean = text_clean.replace(",", " /")
+        # ----------------------------------
 
         has_end_marker = "//" in text_clean
         text_processing = text_clean.replace("//", " //")
@@ -187,7 +195,6 @@ def generate_pptx_binary(naskah_text):
                 
                 sisa_text = sisa_text[idx_tutup+1:]
 
-    # Simpan ke Memory (RAM) bukan ke Harddisk
     binary_output = io.BytesIO()
     prs.save(binary_output)
     binary_output.seek(0)
@@ -197,20 +204,15 @@ def generate_pptx_binary(naskah_text):
 st.set_page_config(page_title="Prompter Maker", page_icon="📺")
 
 st.title("📺 TV Prompter Generator")
-st.write("Copy-Paste naskah Anda di bawah ini, lalu download hasilnya sebagai PPT.")
+st.write("Format Otomatis: Koma (,) jadi / dan Titik (.) jadi //")
 
-# Input Teks
-naskah_input = st.text_area("Masukkan Naskah:", height=300, placeholder="HOST HALO PEMIRSA...")
+naskah_input = st.text_area("Masukkan Naskah:", height=300, placeholder="HOST Halo pemirsa, selamat datang di acara ini. Kita akan bersenang-senang.")
 
 if naskah_input:
     if st.button("Buat File PowerPoint"):
         with st.spinner("Sedang memproses..."):
-            # Panggil fungsi generate
             file_ppt = generate_pptx_binary(naskah_input)
-            
-            st.success("Selesai! Silakan download di bawah.")
-            
-            # Tombol Download
+            st.success("Selesai! PPT siap diunduh.")
             st.download_button(
                 label="📥 Download PPT Prompter",
                 data=file_ppt,
