@@ -1,5 +1,6 @@
 import streamlit as st
 import math
+import re
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -12,10 +13,10 @@ BATAS_MAKSIMAL = 15
 
 # --- FUNGSI LOGIKA ---
 def bagi_secara_adil(teks, batas_maksimal):
+    # Menggunakan split(None) agar aman terhadap spasi ganda/tab/nbsp
     kata_kata = teks.split()
     total_kata = len(kata_kata)
-    if total_kata <= batas_maksimal:
-        return [teks]
+    if total_kata <= batas_maksimal: return [teks]
     jumlah_chunk = math.ceil(total_kata / batas_maksimal)
     kata_per_chunk = math.ceil(total_kata / jumlah_chunk)
     potongan = []
@@ -25,7 +26,8 @@ def bagi_secara_adil(teks, batas_maksimal):
     return potongan
 
 def proses_kalimat_final(teks_lengkap):
-    raw_phrases = [p.strip() for p in teks_lengkap.split("/") if p.strip()]
+    # Split berdasarkan / tapi lebih toleran terhadap spasi
+    raw_phrases = [p.strip() for p in re.split(r'\s*/\s*', teks_lengkap) if p.strip()]
     final_slides = []
     current_slide_phrases = []
     current_word_count = 0
@@ -49,16 +51,12 @@ def proses_kalimat_final(teks_lengkap):
 
         potensi_total = current_word_count + phrase_word_count
         masuk = False
-        
         if potensi_total <= TARGET_IDEAL:
             masuk = True
         elif potensi_total <= BATAS_MAKSIMAL:
-            if "//" in phrase or ")" in phrase:
-                masuk = True
-            else:
-                masuk = False
-        else:
-            masuk = False
+            if "//" in phrase or ")" in phrase: masuk = True
+            else: masuk = False
+        else: masuk = False
             
         if masuk:
             current_slide_phrases.append(phrase)
@@ -83,37 +81,47 @@ def generate_pptx_binary(naskah_text):
     tanda_tutup = chr(93)
 
     lines = naskah_text.split('\n')
-
     for line in lines:
         text_raw = line.strip()
+        
+        # --- DEEP CLEANING (PEMBERSIHAN TUNTAS) ---
+        # 1. Hapus Zero Width Space (\u200b) yang sering ikut dari copy-paste
+        text_raw = text_raw.replace('\u200b', '')
+        # 2. Ubah Non-Breaking Space (\xa0) menjadi spasi biasa
+        text_raw = text_raw.replace('\xa0', ' ')
+        # ------------------------------------------
+
         if tanda_sumber in text_raw:
             parts = text_raw.split(tanda_tutup)
             text_clean = parts[1].strip() if len(parts) > 1 else text_raw
-        else:
-            text_clean = text_raw
+        else: text_clean = text_raw
         
         if not text_clean: continue
 
-        # --- AUTO PUNCTUATION SEDERHANA ---
-        # 1. Ganti Titik (.) jadi // 
+        # --- AUTO PUNCTUATION ---
         text_clean = text_clean.replace(".", " //")
-        
-        # 2. Ganti Koma (,) jadi /
         text_clean = text_clean.replace(",", " /")
-        # ----------------------------------
-
+        
         has_end_marker = "//" in text_clean
         text_processing = text_clean.replace("//", " //")
 
-        pecahan = text_processing.split(" ", 1)
+        # --- SMART SPLIT (PEMISAH PINTAR) ---
+        # Menggunakan split(None, 1) akan memisahkan kata pertama 
+        # terlepas apakah pemisahnya spasi, tab, atau karakter aneh lainnya.
+        pecahan = text_processing.split(None, 1)
+        
         nama_pembicara = ""
         isi_pesan = text_processing
 
         if len(pecahan) > 1:
             kata_pertama = pecahan[0]
-            if kata_pertama.isupper() and len(kata_pertama) > 1 and kata_pertama.isalpha():
-                nama_pembicara = kata_pertama
-                isi_pesan = pecahan[1]
+            # Syarat Nama: Huruf Besar Semua DAN Lebih dari 1 Huruf
+            # (Angka diperbolehkan, misal HOST1)
+            if kata_pertama.isupper() and len(kata_pertama) > 1:
+                # Pastikan bukan tanda baca
+                if not kata_pertama.startswith("/"):
+                    nama_pembicara = kata_pertama
+                    isi_pesan = pecahan[1]
 
         list_slide_text = proses_kalimat_final(isi_pesan)
 
@@ -132,12 +140,7 @@ def generate_pptx_binary(naskah_text):
             fill = background.fill
             fill.solid()
             fill.fore_color.rgb = RGBColor(0, 0, 0)
-
-            left = Inches(0.2)
-            top = Inches(0.2)
-            width = Inches(9.6) 
-            height = Inches(7.1)
-            
+            left = Inches(0.2); top = Inches(0.2); width = Inches(9.6); height = Inches(7.1)
             txBox = slide.shapes.add_textbox(left, top, width, height)
             tf = txBox.text_frame
             tf.auto_size = MSO_AUTO_SIZE.NONE 
@@ -192,7 +195,6 @@ def generate_pptx_binary(naskah_text):
                 run_merah.font.size = Pt(54)
                 run_merah.font.bold = True
                 run_merah.font.color.rgb = RGBColor(255, 0, 0)
-                
                 sisa_text = sisa_text[idx_tutup+1:]
 
     binary_output = io.BytesIO()
@@ -202,20 +204,19 @@ def generate_pptx_binary(naskah_text):
 
 # --- TAMPILAN WEBSITE ---
 st.set_page_config(page_title="Prompter Maker", page_icon="📺")
+st.title("📺 TV Prompter Generator (Anti-Bug)")
+st.write("Fitur: Anti-Karakter Hantu, Smart Split, Host Kuning (Angka OK), Aksi Merah.")
 
-st.title("📺 TV Prompter Generator")
-st.write("Format Otomatis: Koma (,) jadi / dan Titik (.) jadi //")
-
-naskah_input = st.text_area("Masukkan Naskah:", height=300, placeholder="HOST Halo pemirsa, selamat datang di acara ini. Kita akan bersenang-senang.")
+naskah_input = st.text_area("Masukkan Naskah:", height=300, placeholder="HOST Halo pemirsa. (SENYUM) Apa kabar?")
 
 if naskah_input:
     if st.button("Buat File PowerPoint"):
         with st.spinner("Sedang memproses..."):
             file_ppt = generate_pptx_binary(naskah_input)
-            st.success("Selesai! PPT siap diunduh.")
+            st.success("Selesai! Bug spasi hantu sudah diperbaiki.")
             st.download_button(
                 label="📥 Download PPT Prompter",
                 data=file_ppt,
-                file_name="Prompter_Result.pptx",
+                file_name="Prompter_Final_Fix.pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
             )
